@@ -1,0 +1,6 @@
+Host *
+    StrictHostKeyChecking no
+
+Host mr pbs-master pbs-master-root
+    HostName 192.168.11.16
+    User root

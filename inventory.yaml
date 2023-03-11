@@ -1,0 +1,10 @@
+all:
+  vars:
+    ansible_user: root
+    ansible_ssh_pass: password
+    ansible_ssh_common_args: '-F ssh_config'
+  children:
+    pbs_master:
+      hosts:
+        pbs_master1:
+          ansible_host: pbs-master-root

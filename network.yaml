@@ -1,0 +1,118 @@
+---
+- name: Prerequirements
+  become: true
+  hosts: all
+  tasks:
+    - name: Ensure SELinux Python packages installed
+      ansible.builtin.dnf:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - policycoreutils-python-utils
+        - python3-policycoreutils
+
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+      notify:
+        - Reboot
+
+    - name: Ensure chkconfig package installed
+      ansible.builtin.dnf:
+        name: chkconfig
+        state: present
+
+    - name: Ensure yum packages installed
+      ansible.builtin.dnf:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - tftp-server
+        - dnsmasq-utils
+        - dnsmasq
+        - syslinux
+
+    - name: Locate /etc/dnsmasq.conf from template
+      ansible.builtin.template:
+        src: dnsmasq.conf.j2
+        dest: /etc/dnsmasq.conf
+        owner: root
+        group: dnsmasq
+        mode: 0644
+
+    - name: Fix permission of tftpboot directory
+      ansible.builtin.file:
+        path: /var/lib/tftpboot
+        owner: nobody
+        group: nobody
+
+    - name: Link pxelinux.0 to tftpboot directory
+      ansible.builtin.file:
+        src: /usr/share/syslinux/pxelinux.0
+        dest: /var/lib/tftpboot/pxelinux.0
+        state: link
+
+    - name: Download iso file
+      ansible.builtin.get_url:
+        url: https://mirrors.xtom.jp/almalinux/9.1/isos/x86_64/AlmaLinux-9.1-x86_64-minimal.iso
+        dest: /var/lib/tftpboot/AlmaLinux-9.1-x86_64-minimal.iso
+        checksum: "sha256:3eebd50aabe93b9cbea3937dcf5e1d893e397a36de128ae60a8d46ff048fa0d6"
+
+    - name: Prepare mounted directory
+      ansible.builtin.file:
+        path: /mnt/AlmaLinux-9.1-x86_64-minimal
+        state: directory
+
+    - name: Mount iso file
+      ansible.builtin.mount:
+        path: /mnt/AlmaLinux-9.1-x86_64-minimal
+        src: /var/lib/tftpboot/AlmaLinux-9.1-x86_64-minimal.iso
+        fstype: iso9660
+        opts: loop
+        state: mounted
+
+    - name: Create pxelinux.cfg directory
+      ansible.builtin.file:
+        path: /var/lib/tftpboot/pxelinux.cfg
+        state: directory
+
+    - name: Locate pxelinux.cfg/default from template
+      ansible.builtin.template:
+        src: var/lib/tftpboot/pxelinux.cfg/default.j2
+        dest: /var/lib/tftpboot/pxelinux.cfg/default
+        mode: 0644
+
+    - name: Link vmlinuz to tftpboot directory
+      ansible.builtin.file:
+        src: "/mnt/AlmaLinux-9.1-x86_64-minimal/images/pxeboot/{{ item }}"
+        dest: "/var/lib/tftpboot/{{ item }}"
+        state: link
+      loop:
+        - vmlinuz
+        - initrd.img
+
+    - name: Ensure dnsmasq started
+      ansible.builtin.service:
+        name: dnsmasq
+        state: started
+        enabled: yes
+
+    - name: Ensure firewall enabled
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Ensure tftp service accessable
+      ansible.builtin.firewalld:
+        service: "{{ item }}"
+        permanent: yes
+        state: enabled
+      loop:
+        - tftp
+        - dhcp
+
+# TODO: selinuxの変更時はrebootが必要
+handler:
+  - name: Reboot
+    ansible.builtin.reboot:

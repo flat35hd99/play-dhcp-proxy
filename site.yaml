@@ -1,0 +1,3 @@
+---
+- name: Network master
+  ansible.builtin.import_playbook: network.yaml
